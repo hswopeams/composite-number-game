@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.26;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IVerifier} from "./IVerfier.sol";
 
 contract CompositeNumberGame {
     using SafeERC20 for IERC20;
 
-    uint256 public constant T = 10; // Timeframe in blocks
+    /// @notice Timeframe in blocks
+    uint256 public constant T = 10;
+
+    /// @notice Verifier contract interface
+    IVerifier public verifier;
 
     /// @notice Struct to store challenge details
     struct Challenge {
@@ -55,10 +60,11 @@ contract CompositeNumberGame {
      * @notice Constructor that initializes the contract with a list of supported token addresses.
      * @param _tokenAddresses An array of token addresses to be marked as supported.
      */
-    constructor(address[] memory _tokenAddresses) {
+    constructor(address[] memory _tokenAddresses, address _verifierAddress) {
         for (uint256 i = 0; i < _tokenAddresses.length; i++) {
             supportedTokens[_tokenAddresses[i]] = true;
         }
+        verifier = IVerifier(_verifierAddress);
     }
 
     function createChallenge(
@@ -92,7 +98,13 @@ contract CompositeNumberGame {
         emit ChallengeCreated(_n, msg.sender, _rewardToken, _rewardAmount);
     }
 
-    function solveChallenge(uint256 _n) external {
+    function solveChallenge(
+        uint256 _n,
+        uint[2] calldata _pA,
+        uint[2][2] calldata _pB,
+        uint[2] calldata _pC,
+        uint[1] calldata _pubSignals
+    ) external {
         Challenge storage challenge = challenges[_n];
         require(
             challenges[_n].challenger != address(0),
@@ -104,8 +116,9 @@ contract CompositeNumberGame {
             "Challenge already solved"
         );
 
-        // Add logic to verify _n is composite
-        // For simplicity, let's assume the proof is always correct
+        // Verify the proof using the Verifier contract
+        bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
+        require(isValidProof, "Invalid proof");
 
         uint256 halfReward = challenge.rewardAmount / 2;
 
