@@ -54,7 +54,25 @@ contract CompositeNumberGame {
     );
 
     ///@notice Event emitted when a user withdraws tokens
-    event Withdraw(address indexed user, address indexed token, uint256 amount);
+    event Withdrawn(
+        address indexed user,
+        address indexed token,
+        uint256 amount,
+        uint256 newBalance
+    );
+
+    /// @notice Custom errors
+    error InvalidAddress(address invalidAddress);
+    error InvalidChallenge(uint256 n);
+    error InvalidProof();
+    error InvalidAmount(uint256 amount);
+    error InvalidRewardAmount(uint256 rewardAmount);
+    error UnsupportedToken(address tokenAddress);
+    error ChallengeAlreadyExists(uint256 n);
+    error ChallengeDoesNotExist(uint256 n);
+    error ChallengeExpired(uint256 n);
+    error ChallengeAlreadySolved(uint256 n);
+    error InsufficientBalance(uint256 amount, uint256 balance);
 
     /**
      * @notice Constructor that initializes the contract with a list of supported token addresses.
@@ -62,8 +80,16 @@ contract CompositeNumberGame {
      */
     constructor(address[] memory _tokenAddresses, address _verifierAddress) {
         for (uint256 i = 0; i < _tokenAddresses.length; i++) {
+            require(
+                _tokenAddresses[i] != address(0),
+                InvalidAddress(_tokenAddresses[i])
+            );
             supportedTokens[_tokenAddresses[i]] = true;
         }
+        require(
+            _verifierAddress != address(0),
+            InvalidAddress(_verifierAddress)
+        );
         verifier = IVerifier(_verifierAddress);
     }
 
@@ -72,12 +98,12 @@ contract CompositeNumberGame {
         address _rewardToken,
         uint256 _rewardAmount
     ) external {
-        require(_n > 1, "n must be greater than one");
-        require(_rewardAmount > 0, "Reward must be greater than zero");
-        require(supportedTokens[_rewardToken], "Token not supported");
+        require(_n > 1, InvalidChallenge(_n));
+        require(_rewardAmount > 0, InvalidRewardAmount(_rewardAmount));
+        require(supportedTokens[_rewardToken], UnsupportedToken(_rewardToken));
         require(
             challenges[_n].challenger == address(0),
-            "Challenge already exists"
+            ChallengeAlreadyExists(_n)
         );
 
         IERC20(_rewardToken).safeTransferFrom(
@@ -108,17 +134,20 @@ contract CompositeNumberGame {
         Challenge storage challenge = challenges[_n];
         require(
             challenges[_n].challenger != address(0),
-            "Challenge does not exist"
+            ChallengeDoesNotExist(_n)
         );
-        require(block.number <= challenge.blockNumber + T, "Challenge expired");
+        require(
+            block.number <= challenge.blockNumber + T,
+            ChallengeExpired(_n)
+        );
         require(
             challenges[_n].solver == address(0),
-            "Challenge already solved"
+            ChallengeAlreadySolved(_n)
         );
 
         // Verify the proof using the Verifier contract
         bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
-        require(isValidProof, "Invalid proof");
+        require(isValidProof, InvalidProof());
 
         uint256 halfReward = challenge.rewardAmount / 2;
 
@@ -135,15 +164,17 @@ contract CompositeNumberGame {
     }
 
     function withdraw(uint256 _amount, address _tokenAddress) external {
-        require(_amount > 0, "Amount must be greater than zero");
+        require(_amount > 0, InvalidAmount(_amount));
         require(
-            balances[msg.sender][_tokenAddress] >= _amount,
-            "Insufficient balance"
+            supportedTokens[_tokenAddress],
+            UnsupportedToken(_tokenAddress)
         );
+        uint256 balance = balances[msg.sender][_tokenAddress];
+        require(balance >= _amount, InsufficientBalance(_amount, balance));
 
         // Decrement user balance before transferring tokens
         balances[msg.sender][_tokenAddress] -= _amount;
         IERC20(_tokenAddress).safeTransfer(msg.sender, _amount);
-        emit Withdraw(msg.sender, _tokenAddress, _amount);
+        emit Withdrawn(msg.sender, _tokenAddress, _amount, balance - _amount);
     }
 }

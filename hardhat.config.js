@@ -1,4 +1,6 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-chai-matchers");
+
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -7,6 +9,7 @@ module.exports = {
     settings: {
       optimizer: { enabled: true, runs: 200 },
       evmVersion: "cancun",
+      viaIR: true,
     },
   },
 };

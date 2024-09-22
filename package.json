@@ -5,6 +5,7 @@
     "test": "npx hardhat test"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.0.2",
     "circomlib": "^2.0.5",

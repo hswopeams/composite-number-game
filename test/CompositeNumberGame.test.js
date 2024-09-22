@@ -120,4 +120,14 @@ describe("CompositeNumberGame", function () {
         const prizePool = await game.prizePools(await token.getAddress());
         expect(prizePool).to.equal(rewardAmount / 2n);
     });
+
+    it("should revert with InvalidChallenge error", async function () {
+        const n = 1;
+        const rewardAmount = ethers.parseEther("100");
+        await token.connect(challenger).approve(await game.getAddress(), rewardAmount);
+
+        await expect(
+            game.connect(challenger).createChallenge(n, await token.getAddress(), rewardAmount)
+        ).to.be.revertedWithCustomError(game, "InvalidChallenge");
+    });
 });
