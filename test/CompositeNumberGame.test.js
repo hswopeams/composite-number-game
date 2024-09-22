@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { execSync } = require("child_process");
 const fs = require("fs");
 
@@ -12,27 +13,30 @@ describe("CompositeNumberGame", function () {
     const verificationKeyPath = "circuit/verification_key.json";
     const ptauPath = "circuit/powersOfTau28_hez_final_15.ptau";
 
-    let verifier, game, token;
-    let owner, alice, bob, solver;
-
-    before(async function () {
-        // Compile the circuit
-        console.log("Compiling the circuit...");
-        execSync(`npx circom circuit/composite-check.circom --r1cs --wasm --sym --output circuit`, { stdio: 'inherit' });
-
-        // Generate the keys
-        console.log("Generating the keys...");
-        execSync(`npx snarkjs groth16 setup ${r1csPath} ${ptauPath} ${zkeyPath}`, { stdio: 'inherit' });
-        execSync(`npx snarkjs zkey export verificationkey ${zkeyPath} ${verificationKeyPath}`, { stdio: 'inherit' });
+    //let verifier, game, token;
+    //let owner, alice, bob, solver;
 
 
-    });
-
-    beforeEach(async function () {
+    async function setupTestWithCircomFixture() {
         // Get signers
         [owner, challenger, solver] =
             await ethers.getSigners();
+        const contracts = await deployContracts();
+        compileCircuiteAndGenerateKeys();
 
+        return { contracts, signers: { owner, challenger, solver } };
+    }
+
+    async function setupTestFixture() {
+        // Get signers
+        [owner, challenger, solver] =
+            await ethers.getSigners();
+        const contracts = await deployContracts();
+
+        return { contracts, signers: { owner, challenger, solver } };
+    }
+
+    async function deployContracts() {
         // Deploy the Verifier contract
         const Verifier = await ethers.getContractFactory("Groth16Verifier");
         verifier = await Verifier.deploy();
@@ -49,14 +53,29 @@ describe("CompositeNumberGame", function () {
 
         // Transfer some tokens to the challenger so they can create challenges
         await token.connect(owner).transfer(await challenger.getAddress(), ethers.parseEther("1000"));
-    });
 
-    async function generateWitness(input) {
+        return { token, verifier, game };
+    }
+
+    function compileCircuiteAndGenerateKeys() {
+        // Compile the circuit
+        console.log("Compiling the circuit...");
+        execSync(`npx circom circuit/composite-check.circom --r1cs --wasm --sym --output circuit`, { stdio: 'inherit' });
+
+        // Generate the keys
+        console.log("Generating the keys...");
+        execSync(`npx snarkjs groth16 setup ${r1csPath} ${ptauPath} ${zkeyPath}`, { stdio: 'inherit' });
+        execSync(`npx snarkjs zkey export verificationkey ${zkeyPath} ${verificationKeyPath}`, { stdio: 'inherit' });
+    }
+
+
+
+    function generateWitness(input) {
         fs.writeFileSync("circuit/input.json", JSON.stringify(input));
         execSync(`node circuit/composite-check_js/generate_witness.js ${wasmPath} circuit/input.json circuit/witness.wtns`);
     }
 
-    async function generateProof() {
+    function generateProof() {
         try {
             console.log("Generating proof...");
             execSync(`npx snarkjs groth16 prove ${zkeyPath} circuit/witness.wtns circuit/proof.json circuit/public.json`, { stdio: 'inherit' });
@@ -66,7 +85,7 @@ describe("CompositeNumberGame", function () {
         }
     }
 
-    async function verifyProof() {
+    function verifyProof() {
         try {
             console.log("Verifying proof...");
             const result = execSync(`npx snarkjs groth16 verify ${verificationKeyPath} circuit/public.json circuit/proof.json`);
@@ -78,7 +97,7 @@ describe("CompositeNumberGame", function () {
         }
     }
 
-    async function getCalldata() {
+    function getCalldata() {
         try {
             const calldata = execSync(`npx snarkjs zkey export soliditycalldata circuit/public.json circuit/proof.json`);
 
@@ -92,11 +111,13 @@ describe("CompositeNumberGame", function () {
     }
 
     it("should solve the challenge for composite number 33", async function () {
+        const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
         // Create a challenge
         const n = 33;
         const rewardAmount = ethers.parseEther("100");
-        await token.connect(challenger).approve(await game.getAddress(), rewardAmount);
-        await game.connect(challenger).createChallenge(n, await token.getAddress(), rewardAmount);
+        await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+        await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
 
         // Generate witness, proof, and verify
         await generateWitness({ n });
@@ -111,23 +132,25 @@ describe("CompositeNumberGame", function () {
         const [pA, pB, pC, pubSignals] = calldata;
 
         // Solve the challenge
-        await game.connect(solver).solveChallenge(n, pA, pB, pC, pubSignals);
+        await contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals);
 
         // Check balances
-        const solverBalance = await game.balances(solver.address, await token.getAddress());
+        const solverBalance = await contracts.game.balances(signers.solver.address, await contracts.token.getAddress());
         expect(solverBalance).to.equal(rewardAmount / 2n);
 
-        const prizePool = await game.prizePools(await token.getAddress());
+        const prizePool = await contracts.game.prizePools(await contracts.token.getAddress());
         expect(prizePool).to.equal(rewardAmount / 2n);
     });
 
     it("should revert with InvalidChallenge error", async function () {
+        const { contracts, signers } = await loadFixture(setupTestFixture);
         const n = 1;
         const rewardAmount = ethers.parseEther("100");
-        await token.connect(challenger).approve(await game.getAddress(), rewardAmount);
+        await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
 
         await expect(
-            game.connect(challenger).createChallenge(n, await token.getAddress(), rewardAmount)
-        ).to.be.revertedWithCustomError(game, "InvalidChallenge");
+            contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount)
+        ).to.be.revertedWithCustomError(contracts.game, "InvalidChallenge");
     });
+
 });
