@@ -1,99 +1,53 @@
 pragma circom 2.1.9;
 
 include "../node_modules/circomlib/circuits/comparators.circom";
-include "../node_modules/circomlib/circuits/bitify.circom";
-include "../node_modules/circomlib/circuits/gates.circom";
 
-template CompositeCheck() {
+template SimpleCompositeCheck() {
     signal input n;
+    signal input factor1;
+    signal input factor2;
     signal output isComposite;
 
-    // Ensure n is a 64-bit number. Limiting it to 64 bits for simplicity
-    component nBits = Num2Bits(64);
-    nBits.in <== n;
+    signal product;
 
-    component lt[64];
-    component gt[64];
-    component divCheck[64];
-    component and1[64];
-    component and2[64];
-    
-    signal factors[64];
-    signal isFactorSignal[64];
+    // Compute the product of the two factors
+    product <== factor1 * factor2;
 
+    // Check if the product equals n
+    component isProductEqual = IsEqual();
+    isProductEqual.in[0] <== product;
+    isProductEqual.in[1] <== n;
 
-    // Check factors from 2 to 64 (we start from 2 and go up to 33). Limiting the loops for simplicity and efiiciency. In practice, we would check factors up to sqrt(n)
-    for (var i = 0; i < 64; i++) {
-        factors[i] <== i + 2;  // Factors from 2 to 63
-        
-        // Check if factors[i] < n
-        lt[i] = LessThan(64);
-        lt[i].in[0] <== factors[i];
-        lt[i].in[1] <== n;
+    // Check if factor1 > 1
+    component isFactor1GreaterThan1 = GreaterThan(64);
+    isFactor1GreaterThan1.in[0] <== factor1;
+    isFactor1GreaterThan1.in[1] <== 1;
 
-        // Check if factors[i] > 1 (always true in this case, but we keep it for consistency)
-        gt[i] = GreaterThan(64);
-        gt[i].in[0] <== factors[i];
-        gt[i].in[1] <== 1;
+    // Check if factor2 > 1
+    component isFactor2GreaterThan1 = GreaterThan(64);
+    isFactor2GreaterThan1.in[0] <== factor2;
+    isFactor2GreaterThan1.in[1] <== 1;
 
-        // Check if factors[i] divides n
-        divCheck[i] = DivisionCheck();
-        divCheck[i].n <== n;
-        divCheck[i].factor <== factors[i];
+    // Check if factor1 < n
+    component isFactor1LessThanN = LessThan(64);
+    isFactor1LessThanN.in[0] <== factor1;
+    isFactor1LessThanN.in[1] <== n;
 
-        // Use AND gates to combine conditions
-        and1[i] = AND();
-        and1[i].a <== lt[i].out;
-        and1[i].b <== gt[i].out;
+    // Check if factor2 < n
+    component isFactor2LessThanN = LessThan(64);
+    isFactor2LessThanN.in[0] <== factor2;
+    isFactor2LessThanN.in[1] <== n;
 
-        and2[i] = AND();
-        and2[i].a <== and1[i].out;
-        and2[i].b <== divCheck[i].out;
+    // Combine the conditions in a quadratic manner
+    signal condition1;
+    signal condition2;
+    signal condition3;
 
-        // factors[i] is a valid factor if all conditions are true
-        isFactorSignal[i] <== and2[i].out;
-    }
+    condition1 <== isProductEqual.out * isFactor1GreaterThan1.out;
+    condition2 <== isFactor2GreaterThan1.out * isFactor1LessThanN.out;
+    condition3 <== condition1 * condition2;
 
-    // The number is composite if any isFactorSignal is 1
-    var isCompositeTemp = 0;
-    for (var i = 0; i < 32; i++) {
-        isCompositeTemp = isCompositeTemp + isFactorSignal[i];
-    }
-
-    component gtZero = GreaterThan(64);
-    gtZero.in[0] <== isCompositeTemp;
-    gtZero.in[1] <== 0;
-    isComposite <== gtZero.out;
+    isComposite <== condition3 * isFactor2LessThanN.out;
 }
 
-// Custom template to check if 'factor' divides 'n' without remainder
-template DivisionCheck() {
-    signal input n;
-    signal input factor;
-    signal output out;
-
-    signal quotient;
-    signal remainder;
-
-    // Check if factor is zero
-    component isZero = IsZero();
-    isZero.in <== factor;
-    signal factorNotZero <== 1 - isZero.out;
-
-    // Compute quotient and remainder
-    quotient <-- n \ factor;
-    remainder <-- n % factor;
-
-    // Ensure n = factor * quotient + remainder when factor is not zero
-    n === factor * quotient + remainder;
-
-    // The division is valid (remainder is 0) only if factor is not zero
-    component remainderIsZero = IsZero();
-    remainderIsZero.in <== remainder;
-
-    // Output is 1 if factor is not zero and remainder is zero
-    out <== factorNotZero * remainderIsZero.out;
-}
-
-
-component main = CompositeCheck();
+component main {public [n]} = SimpleCompositeCheck();
