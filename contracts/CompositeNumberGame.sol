@@ -5,6 +5,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVerifier} from "./IVerfier.sol";
 
+import "hardhat/console.sol";
+
 contract CompositeNumberGame {
     using SafeERC20 for IERC20;
 
@@ -73,6 +75,8 @@ contract CompositeNumberGame {
     error ChallengeExpired(uint256 n);
     error ChallengeAlreadySolved(uint256 n);
     error InsufficientBalance(uint256 amount, uint256 balance);
+    error ProofForWrongChallenge(uint256 n);
+    error NotProvenComposite(uint256 isComposite);
 
     /**
      * @notice Constructor that initializes the contract with a list of supported token addresses.
@@ -129,8 +133,25 @@ contract CompositeNumberGame {
         uint[2] calldata _pA,
         uint[2][2] calldata _pB,
         uint[2] calldata _pC,
-        uint[1] calldata _pubSignals
+        uint[2] calldata _pubSignals
     ) external {
+        console.log("_pA[0] in solveChallenge", toHexString(_pA[0]));
+        console.log("_pA[1] in solveChallenge", toHexString(_pA[1]));
+        console.log("_pB[0][0] in solveChallenge", toHexString(_pB[0][0]));
+        console.log("_pB[0][1] in solveChallenge", toHexString(_pB[0][1]));
+        console.log("_pB[1][0] in solveChallenge", toHexString(_pB[1][0]));
+        console.log("_pB[1][1] in solveChallenge", toHexString(_pB[1][1]));
+        console.log("_pC[0] in solveChallenge", toHexString(_pC[0]));
+        console.log("_pC[1] in solveChallenge", toHexString(_pC[1]));
+        console.log(
+            "_pubSignals[0] in solveChallenge",
+            toHexString(_pubSignals[0])
+        );
+        console.log(
+            "_pubSignals[1] in solveChallenge",
+            toHexString(_pubSignals[1])
+        );
+
         Challenge storage challenge = challenges[_n];
         require(
             challenges[_n].challenger != address(0),
@@ -145,9 +166,22 @@ contract CompositeNumberGame {
             ChallengeAlreadySolved(_n)
         );
 
-        // Verify the proof using the Verifier contract
+        // print out element 1 of _pubSignals
+        console.log("_pubSignals[1] in contract", _pubSignals[1]);
+        console.log("_pubSignals[0] in contract", _pubSignals[0]);
+        console.log("_n in contract", _n);
+
+        // Check that the proof is for the correct challenge
+        require(_n == _pubSignals[1], ProofForWrongChallenge(_n));
+
+        // Verify the proof using the Verifier contract. Verifies the mathematical validity of the proof but doesn't check public inputs
         bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
+        console.log("isValidProof", isValidProof); // Debugging output
+
         require(isValidProof, InvalidProof());
+
+        // Check that the proof determined that n is composite based on the factors (private inputs) provided by the solver
+        require(_pubSignals[0] == 1, NotProvenComposite(_pubSignals[0]));
 
         uint256 halfReward = challenge.rewardAmount / 2;
 
@@ -176,5 +210,18 @@ contract CompositeNumberGame {
         balances[msg.sender][_tokenAddress] -= _amount;
         IERC20(_tokenAddress).safeTransfer(msg.sender, _amount);
         emit Withdrawn(msg.sender, _tokenAddress, _amount, balance - _amount);
+    }
+
+    // Convert uint256 to hex string and print
+    function toHexString(uint256 value) internal pure returns (string memory) {
+        bytes memory buffer = new bytes(2 + 64);
+        buffer[0] = "0";
+        buffer[1] = "x";
+        for (uint256 i = 0; i < 64; i++) {
+            buffer[2 + i] = bytes("0123456789abcdef")[
+                (value >> (4 * (63 - i))) & 0xf
+            ];
+        }
+        return string(buffer);
     }
 }

@@ -3,6 +3,7 @@ const { ethers } = require("hardhat");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { execSync } = require("child_process");
 const fs = require("fs");
+const snarkjs = require('snarkjs');
 
 describe("CompositeNumberGame", function () {
     this.timeout(300000); // Increase timeout
@@ -13,16 +14,13 @@ describe("CompositeNumberGame", function () {
     const verificationKeyPath = "circuit/verification_key.json";
     const ptauPath = "circuit/powersOfTau28_hez_final_15.ptau";
 
-    //let verifier, game, token;
-    //let owner, alice, bob, solver;
-
 
     async function setupTestWithCircomFixture() {
         // Get signers
         [owner, challenger, solver] =
             await ethers.getSigners();
         const contracts = await deployContracts();
-        compileCircuiteAndGenerateKeys();
+        compileCircuite();
 
         return { contracts, signers: { owner, challenger, solver } };
     }
@@ -57,35 +55,42 @@ describe("CompositeNumberGame", function () {
         return { token, verifier, game };
     }
 
-    function compileCircuiteAndGenerateKeys() {
+    function compileCircuite() {
         // Compile the circuit
         console.log("Compiling the circuit...");
         execSync(`npx circom circuit/composite-check.circom --r1cs --wasm --sym --output circuit`, { stdio: 'inherit' });
-
-        // Generate the keys
-        console.log("Generating the keys...");
-        execSync(`npx snarkjs groth16 setup ${r1csPath} ${ptauPath} ${zkeyPath}`, { stdio: 'inherit' });
-        execSync(`npx snarkjs zkey export verificationkey ${zkeyPath} ${verificationKeyPath}`, { stdio: 'inherit' });
     }
 
-
-
     function generateWitness(input) {
+        const { n, factor1, factor2 } = input;
+        const witnessInput = {
+            n: n,
+            factor1: factor1,
+            factor2: factor2
+        };
+        console.log("Generating witness with input:", witnessInput);
         fs.writeFileSync("circuit/input.json", JSON.stringify(input));
         execSync(`node circuit/composite-check_js/generate_witness.js ${wasmPath} circuit/input.json circuit/witness.wtns`);
+
+        // Read and log the contents of circuit/input.json
+        const inputJson = fs.readFileSync("circuit/input.json", "utf8");
+        console.log("Contents of circuit/input.json:", inputJson);
     }
 
     function generateProof() {
         try {
             console.log("Generating proof...");
             execSync(`npx snarkjs groth16 prove ${zkeyPath} circuit/witness.wtns circuit/proof.json circuit/public.json`, { stdio: 'inherit' });
+            // Read and log the contents of circuit/input.json
+            const publicJson = fs.readFileSync("circuit/public.json", "utf8");
+            console.log("Contents of circuit/public.json:", publicJson);
         } catch (error) {
             console.error("Error during proof generation:", error);
             throw error;
         }
     }
 
-    function verifyProof() {
+    function verifyProof(expectedN) {
         try {
             console.log("Verifying proof...");
             const result = execSync(`npx snarkjs groth16 verify ${verificationKeyPath} circuit/public.json circuit/proof.json`);
@@ -97,12 +102,15 @@ describe("CompositeNumberGame", function () {
         }
     }
 
+
     function getCalldata() {
         try {
             const calldata = execSync(`npx snarkjs zkey export soliditycalldata circuit/public.json circuit/proof.json`);
+            console.log("Raw Calldata in getCallData:", calldata.toString());
 
             // Wrap the raw output in square brackets to form a valid JSON array
             const wrappedCalldata = `[${calldata.toString().trim()}]`;
+            console.log("Calldata:", wrappedCalldata);
             return JSON.parse(wrappedCalldata);
         } catch (error) {
             console.error("Error in getCalldata:", error);
@@ -110,47 +118,222 @@ describe("CompositeNumberGame", function () {
         }
     }
 
-    it("should solve the challenge for composite number 33", async function () {
-        const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
 
-        // Create a challenge
-        const n = 33;
-        const rewardAmount = ethers.parseEther("100");
-        await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
-        await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
 
-        // Generate witness, proof, and verify
-        await generateWitness({ n });
-        await generateProof();
-        const isValid = await verifyProof();
-        expect(isValid).to.be.true;
 
-        // Get calldata
-        const calldata = await getCalldata();
+    context("createChallenge", function () {
+        context("Happy Path Test Cases", function () {
+            it("should correctly create a challenge", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
 
-        // Destructure calldata correctly
-        const [pA, pB, pC, pubSignals] = calldata;
+                // Create a challenge
+                const n = 33;
+                const rewardAmount = ethers.parseEther("100");
 
-        // Solve the challenge
-        await contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals);
+                // Get balances before
+                const challengerBalanceBefore = await contracts.token.balanceOf(signers.challenger.address,);
+                const gameBalanceBefore = await contracts.token.balanceOf(contracts.game.getAddress());
 
-        // Check balances
-        const solverBalance = await contracts.game.balances(signers.solver.address, await contracts.token.getAddress());
-        expect(solverBalance).to.equal(rewardAmount / 2n);
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+                const tx = await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
 
-        const prizePool = await contracts.game.prizePools(await contracts.token.getAddress());
-        expect(prizePool).to.equal(rewardAmount / 2n);
-    });
+                // Check balances after
+                const challengerBalanceAfter = await contracts.token.balanceOf(signers.challenger.address,);
+                const gameBalanceAfter = await contracts.token.balanceOf(contracts.game.getAddress());
 
-    it("should revert with InvalidChallenge error", async function () {
-        const { contracts, signers } = await loadFixture(setupTestFixture);
-        const n = 1;
-        const rewardAmount = ethers.parseEther("100");
-        await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+                expect(challengerBalanceAfter).to.equal(challengerBalanceBefore - rewardAmount);
+                expect(gameBalanceAfter).to.equal(gameBalanceBefore + rewardAmount);
 
-        await expect(
-            contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount)
-        ).to.be.revertedWithCustomError(contracts.game, "InvalidChallenge");
-    });
+                // Check state
+                const challenge = await contracts.game.challenges(n);
+                expect(challenge.n).to.equal(n);
+                expect(challenge.rewardAmount).to.equal(rewardAmount);
+                expect(challenge.blockNumber).to.equal(tx.blockNumber);
+                expect(challenge.challenger).to.equal(signers.challenger.address);
+                expect(challenge.rewardToken).to.equal(await contracts.token.getAddress());
+                expect(challenge.solver).to.equal(ethers.ZeroAddress);
 
+
+
+                // Check event
+                await expect(tx)
+                    .to.emit(contracts.game, "ChallengeCreated")
+                    .withArgs(n, signers.challenger, await contracts.token.getAddress(), rewardAmount);
+            });
+        }); // End of Happy Path Test Cases
+
+        context("Error Test Cases", function () {
+            it("should revert if n not greater than 1", async function () {
+                const { contracts, signers } = await loadFixture(setupTestFixture);
+                let n;
+                n = 0;
+                const rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                await expect(
+                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount)
+                ).to.be.revertedWithCustomError(contracts.game, "InvalidChallenge").withArgs(n);
+
+                n = 1;
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                await expect(
+                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount)
+                ).to.be.revertedWithCustomError(contracts.game, "InvalidChallenge").withArgs(n);
+            });
+        }); // End of Error test cases
+    }); // End of createChallenge context
+
+
+    context("solveChallenge", function () {
+        context("Happy Path Test Cases", function () {
+            it("should solve the challenge for composite number 33", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 3;
+                const factor2 = 11;
+                const rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+                
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+
+                console.log("calldata: in test case", calldata);
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+                console.log("pA: in test case", pA);
+                console.log("pB: in test case", pB);
+                console.log("pC: in test case", pC);
+                console.log("pubSignals: in test case", pubSignals);
+
+                // Solve the challenge
+                const tx = await contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals);
+
+                // Check balances
+                const solverBalance = await contracts.game.balances(signers.solver.address, await contracts.token.getAddress());
+                expect(solverBalance).to.equal(rewardAmount / 2n);
+
+                const prizePool = await contracts.game.prizePools(await contracts.token.getAddress());
+                expect(prizePool).to.equal(rewardAmount / 2n);
+
+                // Check for events
+                await expect(tx)
+                    .to.emit(contracts.game, "ChallengeSolved")
+                    .withArgs(n, signers.solver, await contracts.token.getAddress(), rewardAmount / 2n, rewardAmount / 2n);
+            });
+        });
+
+        context("Error Test Cases", function () {
+            it("should revert if factors not correct to prove 33 is composite", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 2;
+                const factor2 = 11;
+                const rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
+                await expect(
+                    contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals)
+                ).to.be.revertedWithCustomError(contracts.game, "NotProvenComposite").withArgs(0);
+            });
+
+
+            it("should revert if proof is for a prime (not composite) number", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 11;
+                const factor1 = 1;
+                const factor2 = 11;
+                const rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+               
+                 // Checking that proof is mathematically valid in JS as a sanity check
+                 const isValid = await verifyProof(n);
+                 expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
+                console.log("pubSignals generated by getCalldata:", pubSignals);
+
+                await expect(
+                    contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals)
+                ).to.be.revertedWithCustomError(contracts.game, "NotProvenComposite").withArgs(0);
+            });
+
+            it("should revert if proof is valid but for wrong n", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 3;
+                const factor2 = 11;
+                const rewardAmount = ethers.parseEther("100");
+                const n2 = 100;
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount * 2n);
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
+                await contracts.game.connect(signers.challenger).createChallenge(n2, await contracts.token.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+               
+                 // Checking that proof is mathematically valid in JS as a sanity check
+                 const isValid = await verifyProof(n);
+                 expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
+                console.log("pubSignals generated by getCalldata:", pubSignals);
+
+                await expect(
+                    contracts.game.connect(signers.solver).solveChallenge(n2, pA, pB, pC, pubSignals)
+                ).to.be.revertedWithCustomError(contracts.game, "ProofForWrongChallenge").withArgs(n2);
+
+            });
+        });
+    }); // End of solveChallenge context
 });

@@ -43,11 +43,14 @@ contract Groth16Verifier {
     uint256 constant deltay2 = 8495653923123431417604973247489272438418190587263600148770280649306958101930;
 
     
-    uint256 constant IC0x = 19375312146695564073791161742344789224506394573745902201639595378069685312251;
-    uint256 constant IC0y = 14621902787443798111947016062425178724364536335165837050764624668082662873300;
+    uint256 constant IC0x = 4576349515125326855907145825609067649041453083196945380351397464113851897363;
+    uint256 constant IC0y = 7409635956947902312560050293630956285938843407276715587455852906076656214189;
     
-    uint256 constant IC1x = 581941263562460566902751629024135711036904759144851476285135092367519908623;
-    uint256 constant IC1y = 12229655403379686835684332852866496326217745400641473268136954491539077730735;
+    uint256 constant IC1x = 1684081044200546899274707216089382910805097256682928880172312520525343788674;
+    uint256 constant IC1y = 5777683393348359511098725319618802979418570481374937785318148894174950242693;
+    
+    uint256 constant IC2x = 13430233857104670756226731614416203856769448372575903104084850849508386920626;
+    uint256 constant IC2y = 10832858052215175593984505231302743644590027550285311274935739858582940569054;
     
  
     // Memory data
@@ -56,7 +59,7 @@ contract Groth16Verifier {
 
     uint16 constant pLastMem = 896;
 
-    function verifyProof(uint[2] calldata _pA, uint[2][2] calldata _pB, uint[2] calldata _pC, uint[1] calldata _pubSignals) public view returns (bool) {
+    function verifyProof(uint[2] calldata _pA, uint[2][2] calldata _pB, uint[2] calldata _pC, uint[2] calldata _pubSignals) public view returns (bool) {
         assembly {
             function checkField(v) {
                 if iszero(lt(v, r)) {
@@ -101,6 +104,8 @@ contract Groth16Verifier {
                 // Compute the linear combination vk_x
                 
                 g1_mulAccC(_pVk, IC1x, IC1y, calldataload(add(pubSignals, 0)))
+                
+                g1_mulAccC(_pVk, IC2x, IC2y, calldataload(add(pubSignals, 32)))
                 
 
                 // -A
@@ -158,6 +163,8 @@ contract Groth16Verifier {
             checkField(calldataload(add(_pubSignals, 0)))
             
             checkField(calldataload(add(_pubSignals, 32)))
+            
+            checkField(calldataload(add(_pubSignals, 64)))
             
 
             // Validate all evaluations
