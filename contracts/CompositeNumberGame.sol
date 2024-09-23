@@ -75,8 +75,8 @@ contract CompositeNumberGame {
     error ChallengeExpired(uint256 n);
     error ChallengeAlreadySolved(uint256 n);
     error InsufficientBalance(uint256 amount, uint256 balance);
-    error ProofForWrongChallenge(uint256 n);
-    error NotProvenComposite(uint256 isComposite);
+    error ProofNotForN(uint256 n);
+    error NotComposite(uint256 isComposite);
 
     /**
      * @notice Constructor that initializes the contract with a list of supported token addresses.
@@ -100,9 +100,12 @@ contract CompositeNumberGame {
     function createChallenge(
         uint256 _n,
         address _rewardToken,
-        uint256 _rewardAmount
+        uint256 _rewardAmount,
+        uint[2] calldata _pA,
+        uint[2][2] calldata _pB,
+        uint[2] calldata _pC,
+        uint[2] calldata _pubSignals
     ) external {
-        require(_n > 1, InvalidChallenge(_n));
         require(_rewardAmount > 0, InvalidRewardAmount(_rewardAmount));
         require(supportedTokens[_rewardToken], UnsupportedToken(_rewardToken));
         require(
@@ -110,12 +113,24 @@ contract CompositeNumberGame {
             ChallengeAlreadyExists(_n)
         );
 
+        // Check that this proof is for _n
+        require(_n == _pubSignals[1], ProofNotForN(_n));
+
+        // Verify the proof using the Verifier contract. Verifies the mathematical validity of the proof but doesn't check public inputs
+        bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
+        require(isValidProof, InvalidProof());
+
+        // Check that the proof determined that n is composite based on the factors (private inputs) provided by the challenger
+        require(_pubSignals[0] == 1, NotComposite(_pubSignals[0]));
+
+        // Transfer the reward amount to the contract
         IERC20(_rewardToken).safeTransferFrom(
             msg.sender,
             address(this),
             _rewardAmount
         );
 
+        // Create the challenge
         challenges[_n] = Challenge({
             n: _n,
             rewardAmount: _rewardAmount,
@@ -135,23 +150,6 @@ contract CompositeNumberGame {
         uint[2] calldata _pC,
         uint[2] calldata _pubSignals
     ) external {
-        console.log("_pA[0] in solveChallenge", toHexString(_pA[0]));
-        console.log("_pA[1] in solveChallenge", toHexString(_pA[1]));
-        console.log("_pB[0][0] in solveChallenge", toHexString(_pB[0][0]));
-        console.log("_pB[0][1] in solveChallenge", toHexString(_pB[0][1]));
-        console.log("_pB[1][0] in solveChallenge", toHexString(_pB[1][0]));
-        console.log("_pB[1][1] in solveChallenge", toHexString(_pB[1][1]));
-        console.log("_pC[0] in solveChallenge", toHexString(_pC[0]));
-        console.log("_pC[1] in solveChallenge", toHexString(_pC[1]));
-        console.log(
-            "_pubSignals[0] in solveChallenge",
-            toHexString(_pubSignals[0])
-        );
-        console.log(
-            "_pubSignals[1] in solveChallenge",
-            toHexString(_pubSignals[1])
-        );
-
         Challenge storage challenge = challenges[_n];
         require(
             challenges[_n].challenger != address(0),
@@ -166,22 +164,15 @@ contract CompositeNumberGame {
             ChallengeAlreadySolved(_n)
         );
 
-        // print out element 1 of _pubSignals
-        console.log("_pubSignals[1] in contract", _pubSignals[1]);
-        console.log("_pubSignals[0] in contract", _pubSignals[0]);
-        console.log("_n in contract", _n);
-
         // Check that the proof is for the correct challenge
-        require(_n == _pubSignals[1], ProofForWrongChallenge(_n));
+        require(_n == _pubSignals[1], ProofNotForN(_n));
 
         // Verify the proof using the Verifier contract. Verifies the mathematical validity of the proof but doesn't check public inputs
         bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
-        console.log("isValidProof", isValidProof); // Debugging output
-
         require(isValidProof, InvalidProof());
 
         // Check that the proof determined that n is composite based on the factors (private inputs) provided by the solver
-        require(_pubSignals[0] == 1, NotProvenComposite(_pubSignals[0]));
+        require(_pubSignals[0] == 1, NotComposite(_pubSignals[0]));
 
         uint256 halfReward = challenge.rewardAmount / 2;
 

@@ -62,7 +62,9 @@ describe("CompositeNumberGame", function () {
     }
 
     function generateWitness(input) {
+        console.log("Generating witness with input:", input);
         const { n, factor1, factor2 } = input;
+        console.log("n in generateWitness:", n);
         const witnessInput = {
             n: n,
             factor1: factor1,
@@ -98,7 +100,7 @@ describe("CompositeNumberGame", function () {
             return result.toString().includes("OK");
         } catch (error) {
             console.error("Error during proof verification:", error);
-            throw error;
+            return false;
         }
     }
 
@@ -118,24 +120,40 @@ describe("CompositeNumberGame", function () {
         }
     }
 
-
-
-
     context("createChallenge", function () {
         context("Happy Path Test Cases", function () {
-            it("should correctly create a challenge", async function () {
+            it("should correctly create a challenge for a composite number n", async function () {
                 const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
 
                 // Create a challenge
                 const n = 33;
+                const factor1 = 3;
+                const factor2 = 11;
                 const rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
 
                 // Get balances before
                 const challengerBalanceBefore = await contracts.token.balanceOf(signers.challenger.address,);
                 const gameBalanceBefore = await contracts.token.balanceOf(contracts.game.getAddress());
 
-                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
-                const tx = await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
+
+                // create the challenge
+                const tx = await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
 
                 // Check balances after
                 const challengerBalanceAfter = await contracts.token.balanceOf(signers.challenger.address,);
@@ -153,33 +171,109 @@ describe("CompositeNumberGame", function () {
                 expect(challenge.rewardToken).to.equal(await contracts.token.getAddress());
                 expect(challenge.solver).to.equal(ethers.ZeroAddress);
 
-
-
                 // Check event
                 await expect(tx)
                     .to.emit(contracts.game, "ChallengeCreated")
                     .withArgs(n, signers.challenger, await contracts.token.getAddress(), rewardAmount);
+
+
             });
         }); // End of Happy Path Test Cases
 
         context("Error Test Cases", function () {
-            it("should revert if n not greater than 1", async function () {
-                const { contracts, signers } = await loadFixture(setupTestFixture);
-                let n;
-                n = 0;
+            it("should revert if n is composite but factors are not correct", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 2;
+                const factor2 = 11;
                 const rewardAmount = ethers.parseEther("100");
                 await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
 
-                await expect(
-                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount)
-                ).to.be.revertedWithCustomError(contracts.game, "InvalidChallenge").withArgs(n);
 
-                n = 1;
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
+                await expect(
+                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals)
+                ).to.be.revertedWithCustomError(contracts.game, "NotComposite").withArgs(0);
+            });
+
+            it("should revert if n is prime (not composite)", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 11;
+                const factor1 = 1;
+                const factor2 = 11;
+                const rewardAmount = ethers.parseEther("100");
                 await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
 
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
                 await expect(
-                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount)
-                ).to.be.revertedWithCustomError(contracts.game, "InvalidChallenge").withArgs(n);
+                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals)
+                ).to.be.revertedWithCustomError(contracts.game, "NotComposite").withArgs(0);
+            });
+
+
+            it("should revert if proof is invalid", async function () {
+                const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 3; // Correct factor
+                const factor2 = 11; // Correct factor
+                const rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+
+                // Tamper with the proof to make it invalid
+                const proofJson = JSON.parse(fs.readFileSync("circuit/proof.json", "utf8"));
+                proofJson.pi_a[0] = "1"; // Change the first element of pi_a to make the proof invalid
+                fs.writeFileSync("circuit/proof.json", JSON.stringify(proofJson));
+
+                const isValid = await verifyProof();
+                console.log("Proof verification result:", isValid);
+                expect(isValid).to.be.false;
+
+                // Get calldata
+                const calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pA, pB, pC, pubSignals] = calldata;
+
+                await expect(
+                    contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals)
+                ).to.be.revertedWithCustomError(contracts.game, "InvalidProof");
             });
         }); // End of Error test cases
     }); // End of createChallenge context
@@ -196,12 +290,10 @@ describe("CompositeNumberGame", function () {
                 const factor2 = 11;
                 const rewardAmount = ethers.parseEther("100");
                 await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
-                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
-
                 // Generate witness, proof, and verify
                 await generateWitness({ n, factor1, factor2 });
                 await generateProof();
-                
+
                 // Checking that proof is mathematically valid in JS as a sanity check
                 const isValid = await verifyProof(n);
                 expect(isValid).to.be.true;
@@ -209,15 +301,12 @@ describe("CompositeNumberGame", function () {
                 // Get calldata
                 const calldata = await getCalldata();
 
-
-                console.log("calldata: in test case", calldata);
-
                 // Destructure calldata correctly
                 const [pA, pB, pC, pubSignals] = calldata;
-                console.log("pA: in test case", pA);
-                console.log("pB: in test case", pB);
-                console.log("pC: in test case", pC);
-                console.log("pubSignals: in test case", pubSignals);
+
+                // Create the challenge
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
 
                 // Solve the challenge
                 const tx = await contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals);
@@ -242,11 +331,10 @@ describe("CompositeNumberGame", function () {
 
                 // Create a challenge
                 const n = 33;
-                const factor1 = 2;
+                const factor1 = 3;
                 const factor2 = 11;
                 const rewardAmount = ethers.parseEther("100");
                 await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
-                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
 
                 // Generate witness, proof, and verify
                 await generateWitness({ n, factor1, factor2 });
@@ -262,45 +350,115 @@ describe("CompositeNumberGame", function () {
                 // Destructure calldata correctly
                 const [pA, pB, pC, pubSignals] = calldata;
 
+                // Create the challenge
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+
+                // Try to solve the challenge with incorrect factors for 33
+                const factor1Solve = 2;
+                const factor2Solve = 11;
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1: factor1Solve, factor2: factor2Solve });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValidSolveProof = await verifyProof(n);
+                expect(isValidSolveProof).to.be.true;
+
+                // Get calldata
+                const calldataSolve = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pASolve, pBSolve, pCSolve, pubSignalsSolve] = calldataSolve;
+
                 await expect(
-                    contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals)
-                ).to.be.revertedWithCustomError(contracts.game, "NotProvenComposite").withArgs(0);
+                    contracts.game.connect(signers.solver).solveChallenge(n, pASolve, pBSolve, pCSolve, pubSignalsSolve)
+                ).to.be.revertedWithCustomError(contracts.game, "NotComposite").withArgs(0);
             });
 
-
-            it("should revert if proof is for a prime (not composite) number", async function () {
+            it("should revert if proof is valid but for wrong n", async function () {
                 const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
 
-                // Create a challenge
-                const n = 11;
-                const factor1 = 1;
-                const factor2 = 11;
-                const rewardAmount = ethers.parseEther("100");
+                let n, factor1, factor2;
+                let rewardAmount;
+                let isValid;
+                let calldata, pA, pB, pC, pubSignals;
+
+                // Create challenge 1
+                n = 33;
+                factor1 = 3;
+                factor2 = 11;
+                rewardAmount = ethers.parseEther("100");
                 await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
-                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
 
                 // Generate witness, proof, and verify
                 await generateWitness({ n, factor1, factor2 });
                 await generateProof();
-               
-                 // Checking that proof is mathematically valid in JS as a sanity check
-                 const isValid = await verifyProof(n);
-                 expect(isValid).to.be.true;
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
 
                 // Get calldata
-                const calldata = await getCalldata();
+                calldata = await getCalldata();
 
                 // Destructure calldata correctly
-                const [pA, pB, pC, pubSignals] = calldata;
+                [pA, pB, pC, pubSignals] = calldata;
 
-                console.log("pubSignals generated by getCalldata:", pubSignals);
+                // Create the challenge
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+                // Create challenge 2
+                n = 100;
+                factor1 = 20;
+                factor2 = 5;
+                rewardAmount = ethers.parseEther("100");
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
+
+                // Get calldata
+                calldata = await getCalldata();
+
+                // Destructure calldata correctly
+                [pA, pB, pC, pubSignals] = calldata;
+
+                // Create the challenge
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+
+                // Try to solve the challenge for wrong n
+                const nSolve = 33;
+                const factor1Solve = 3;
+                const factor2Solve = 11;
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n: nSolve, factor1: factor1Solve, factor2: factor2Solve });
+                await generateProof();
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValidSolveProof = await verifyProof(nSolve);
+                expect(isValidSolveProof).to.be.true;
+
+                // Get calldata
+                const calldataSolve = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pASolve, pBSolve, pCSolve, pubSignalsSolve] = calldataSolve;
 
                 await expect(
-                    contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals)
-                ).to.be.revertedWithCustomError(contracts.game, "NotProvenComposite").withArgs(0);
+                    contracts.game.connect(signers.solver).solveChallenge(n, pASolve, pBSolve, pCSolve, pubSignalsSolve)
+                ).to.be.revertedWithCustomError(contracts.game, "ProofNotForN").withArgs(n);
             });
 
-            it("should revert if proof is valid but for wrong n", async function () {
+            it("should revert if proof is invalid", async function () {
                 const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
 
                 // Create a challenge
@@ -308,18 +466,15 @@ describe("CompositeNumberGame", function () {
                 const factor1 = 3;
                 const factor2 = 11;
                 const rewardAmount = ethers.parseEther("100");
-                const n2 = 100;
-                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount * 2n);
-                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount);
-                await contracts.game.connect(signers.challenger).createChallenge(n2, await contracts.token.getAddress(), rewardAmount);
+                await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
 
                 // Generate witness, proof, and verify
                 await generateWitness({ n, factor1, factor2 });
                 await generateProof();
-               
-                 // Checking that proof is mathematically valid in JS as a sanity check
-                 const isValid = await verifyProof(n);
-                 expect(isValid).to.be.true;
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValid = await verifyProof(n);
+                expect(isValid).to.be.true;
 
                 // Get calldata
                 const calldata = await getCalldata();
@@ -327,12 +482,37 @@ describe("CompositeNumberGame", function () {
                 // Destructure calldata correctly
                 const [pA, pB, pC, pubSignals] = calldata;
 
-                console.log("pubSignals generated by getCalldata:", pubSignals);
+                // Create the challenge
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+
+                // Generate valid proof for 33
+                const nSolve = 33;
+                const factor1Solve = 3;
+                const factor2Solve = 11;
+
+                // Generate witness, proof, and verify
+                await generateWitness({ n: nSolve, factor1: factor1Solve, factor2: factor2Solve });
+                await generateProof();
+
+                // Tamper with the proof to make it invalid
+                const proofJson = JSON.parse(fs.readFileSync("circuit/proof.json", "utf8"));
+                proofJson.pi_a[0] = "1"; // Change the first element of pi_a to make the proof invalid
+                fs.writeFileSync("circuit/proof.json", JSON.stringify(proofJson));
+
+                // Checking that proof is mathematically valid in JS as a sanity check
+                const isValidSolveProof = await verifyProof(n);
+                expect(isValidSolveProof).to.be.false;
+
+                // Get calldata
+                const calldataSolve = await getCalldata();
+
+                // Destructure calldata correctly
+                const [pASolve, pBSolve, pCSolve, pubSignalsSolve] = calldataSolve;
 
                 await expect(
-                    contracts.game.connect(signers.solver).solveChallenge(n2, pA, pB, pC, pubSignals)
-                ).to.be.revertedWithCustomError(contracts.game, "ProofForWrongChallenge").withArgs(n2);
-
+                    contracts.game.connect(signers.solver).solveChallenge(n, pASolve, pBSolve, pCSolve, pubSignalsSolve)
+                ).to.be.revertedWithCustomError(contracts.game, "InvalidProof");
             });
         });
     }); // End of solveChallenge context
