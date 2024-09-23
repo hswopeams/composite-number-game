@@ -149,7 +149,7 @@ describe("CompositeNumberGame", function () {
                 const CompositeNumberGame = await ethers.getContractFactory("CompositeNumberGame");
 
                 await expect(
-                   CompositeNumberGame.deploy([tokenAddress], ethers.ZeroAddress)
+                    CompositeNumberGame.deploy([tokenAddress], ethers.ZeroAddress)
                 ).to.be.revertedWithCustomError(CompositeNumberGame, "InvalidAddress");
             });
         }); // End of Error Test Cases
@@ -551,4 +551,101 @@ describe("CompositeNumberGame", function () {
             });
         });
     }); // End of solveChallenge context
+
+    context("withdraw", function () {
+        context("Happy Path Test Cases", function () {
+            it("should allow a user to withdraw tokens", async function () {
+                const { contracts, signers } = await setupTestWithCircomFixture();
+
+                // Transfer some tokens to the challenger and solver
+                const rewardAmount = ethers.parseUnits("100", 18); // 100 tokens
+                await contracts.token.transfer(signers.challenger.address, rewardAmount);
+
+                // Approve the game contract to spend tokens on behalf of the challenger
+                await contracts.token.connect(signers.challenger).approve(contracts.game.getAddress(), rewardAmount);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 3;
+                const factor2 = 11;
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+                const calldata = await getCalldata();
+                const [pA, pB, pC, pubSignals] = calldata;
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+
+                // Solve the challenge
+                const factor1Solve = 3;
+                const factor2Solve = 11;
+                await generateWitness({ n, factor1: factor1Solve, factor2: factor2Solve });
+                await generateProof();
+                const calldataSolve = await getCalldata();
+                const [pASolve, pBSolve, pCSolve, pubSignalsSolve] = calldataSolve;
+                await contracts.game.connect(signers.solver).solveChallenge(n, pASolve, pBSolve, pCSolve, pubSignalsSolve);
+
+                // Check the solver's balance before withdrawal
+                const balanceBefore = await contracts.game.balances(signers.solver.address, await contracts.token.getAddress());
+                expect(balanceBefore).to.equal(rewardAmount / 2n);
+
+                // Withdraw tokens
+                await contracts.game.connect(solver).withdraw(rewardAmount / 2n, await contracts.token.getAddress());
+
+                // Check the solver's balance after withdrawal
+                const balanceAfter = await contracts.game.balances(signers.solver.address, await contracts.token.getAddress());
+                expect(balanceAfter).to.equal(0);
+
+                // Check the solver's token balance
+                const tokenBalance = await contracts.token.balanceOf(signers.solver.address);
+                expect(tokenBalance).to.equal(rewardAmount / 2n);
+            });
+        }); // End of Happy Path Test Cases
+
+        context("Error Test Cases", function () {
+            it("should revert if the user tries to withdraw more than their balance", async function () {
+                const { contracts, signers } = await setupTestWithCircomFixture();
+
+                // Transfer some tokens to the challenger and solver
+                const rewardAmount = ethers.parseUnits("100", 18); // 100 tokens
+                await contracts.token.transfer(signers.challenger.address, rewardAmount);
+
+                // Approve the game contract to spend tokens on behalf of the challenger
+                await contracts.token.connect(signers.challenger).approve(contracts.game.getAddress(), rewardAmount);
+
+                // Create a challenge
+                const n = 33;
+                const factor1 = 3;
+                const factor2 = 11;
+                await generateWitness({ n, factor1, factor2 });
+                await generateProof();
+                const calldata = await getCalldata();
+                const [pA, pB, pC, pubSignals] = calldata;
+                await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+
+                // Solve the challenge
+                const factor1Solve = 3;
+                const factor2Solve = 11;
+                await generateWitness({ n, factor1: factor1Solve, factor2: factor2Solve });
+                await generateProof();
+                const calldataSolve = await getCalldata();
+                const [pASolve, pBSolve, pCSolve, pubSignalsSolve] = calldataSolve;
+                await contracts.game.connect(signers.solver).solveChallenge(n, pASolve, pBSolve, pCSolve, pubSignalsSolve);
+
+                // Check the solver's balance before withdrawal
+                const balanceBefore = await contracts.game.balances(signers.solver.address, await contracts.token.getAddress());
+                expect(balanceBefore).to.equal(rewardAmount / 2n);
+
+                // Attempt to withdraw too much
+                await expect(
+                    contracts.game.connect(solver).withdraw(rewardAmount, await contracts.token.getAddress())
+                ).to.be.revertedWithCustomError(contracts.game, "InsufficientBalance").withArgs(rewardAmount, balanceBefore);
+
+
+            });
+        });
+
+
+
+    }); // End of withdraw context
 });
