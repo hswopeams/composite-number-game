@@ -27,7 +27,7 @@ contract CompositeNumberGame {
     }
 
     /// @notice Mapping to store supported tokens by token address
-    mapping(address => bool) supportedTokens;
+    mapping(address => bool) public supportedTokens;
 
     /// @notice Mapping to store challenges by challenge n value
     mapping(uint256 => Challenge) public challenges;

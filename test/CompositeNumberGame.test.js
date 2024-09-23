@@ -120,6 +120,41 @@ describe("CompositeNumberGame", function () {
         }
     }
 
+    context("constructor", function () {
+        context("Happy Path Test Cases", function () {
+            it("should initialize the contract correctly", async function () {
+                const { contracts, signers } = await setupTestFixture();
+
+                // Check that the verifier address is set correctly
+                expect(await contracts.game.verifier()).to.equal(await contracts.verifier.getAddress());
+
+                // Check that the supported tokens are set correctly
+                expect(await contracts.game.supportedTokens(await contracts.token.getAddress())).to.be.true;
+
+                // Check that the prize pool for the supported token is zero
+                expect(await contracts.game.prizePools(await contracts.token.getAddress())).to.equal(0);
+
+            });
+        }); // End of Happy Path Test Cases
+
+        context("Error Test Cases", function () {
+            it("should revert if verifier address is zero address", async function () {
+                // Deploy the ERC20 token contract
+                const initialSupply = ethers.parseUnits("10000", 18); //10,000 tokens
+                const Token = await ethers.getContractFactory("MockERC20");
+                token = await Token.deploy("Test Token", "TTK", 18, initialSupply);
+
+                // Deploy the CompositeNumberGame contract
+                const tokenAddress = await token.getAddress();
+                const CompositeNumberGame = await ethers.getContractFactory("CompositeNumberGame");
+
+                await expect(
+                   CompositeNumberGame.deploy([tokenAddress], ethers.ZeroAddress)
+                ).to.be.revertedWithCustomError(CompositeNumberGame, "InvalidAddress");
+            });
+        }); // End of Error Test Cases
+    }); // End of constructor context
+
     context("createChallenge", function () {
         context("Happy Path Test Cases", function () {
             it("should correctly create a challenge for a composite number n", async function () {
