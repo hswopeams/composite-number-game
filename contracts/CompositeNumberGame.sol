@@ -202,17 +202,4 @@ contract CompositeNumberGame {
         IERC20(_tokenAddress).safeTransfer(msg.sender, _amount);
         emit Withdrawn(msg.sender, _tokenAddress, _amount, balance - _amount);
     }
-
-    // Convert uint256 to hex string and print
-    function toHexString(uint256 value) internal pure returns (string memory) {
-        bytes memory buffer = new bytes(2 + 64);
-        buffer[0] = "0";
-        buffer[1] = "x";
-        for (uint256 i = 0; i < 64; i++) {
-            buffer[2 + i] = bytes("0123456789abcdef")[
-                (value >> (4 * (63 - i))) & 0xf
-            ];
-        }
-        return string(buffer);
-    }
 }
