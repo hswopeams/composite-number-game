@@ -17,13 +17,11 @@ node_modules
 ignition/deployments/chain-31337
 
 # Circuit-related files that get generated
-circuit/composite-check_final.zkey
 circuit/composite-check.r1cs
 circuit/composite-check.sym
 circuit/input.json
 circuit/proof.json
 circuit/public.json
-circuit/verification_key.json
 circuit/witness.wtns
 circuit/composite-check_js/composite-check.wasm
 circuit/composite-check_js/generate_witness.js
