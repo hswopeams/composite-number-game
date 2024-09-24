@@ -66,6 +66,14 @@ contract CompositeNumberGame {
         uint256 newBalance
     );
 
+    event ExpiredChallengeClaimed(
+        uint256 indexed n,
+        address indexed challenger,
+        address indexed rewardtoken,
+        uint256 rewardAmount,
+        uint256 prizePoolAmount
+    );
+
     /// @notice Custom errors
     error InvalidAddress(address invalidAddress);
     error InvalidChallenge(uint256 n);
@@ -76,17 +84,27 @@ contract CompositeNumberGame {
     error ChallengeAlreadyExists(uint256 n);
     error ChallengeDoesNotExist(uint256 n);
     error ChallengeExpired(uint256 n);
+    error ChallengeNotExpired(uint256 n);
     error ChallengeAlreadySolved(uint256 n);
     error InsufficientBalance(uint256 amount, uint256 balance);
     error ProofNotForN(uint256 n);
     error NotComposite(uint256 isComposite);
+    error UnauthorizedChallenger(address challenger);
+
+    modifier onlyChallenger(uint256 _n) {
+        require(
+            challenges[_n].challenger == msg.sender,
+            UnauthorizedChallenger(msg.sender)
+        );
+        _;
+    }
 
     /**
      * @notice Constructor that initializes the contract with a list of supported token addresses.
      * @param _tokenAddresses An array of token addresses to be marked as supported.
      */
     constructor(address[] memory _tokenAddresses, address _verifierAddress) {
-         require(
+        require(
             _verifierAddress != address(0),
             InvalidAddress(_verifierAddress)
         );
@@ -100,13 +118,12 @@ contract CompositeNumberGame {
             );
             supportedTokens[_tokenAddresses[i]] = true;
         }
-       
     }
 
     /**
      * @notice Creates a new challenge with a reward amount for a given composite number.
      * @dev The reward amount is transferred to the contract and the challenge is created.
-     * The challenger must provide a proof that the number is composite.
+     * The challenger must provide a proof that the _n is composite.
      * @param _n The composite number to be challenged.
      * @param _rewardToken The address of the token to be used as reward.
      * @param _rewardAmount The amount of tokens to be used as reward.
@@ -163,9 +180,8 @@ contract CompositeNumberGame {
     }
 
     /**
-     * @notice Allows caller to solve a challenge by providing a proof that the number is composite.
-     * @dev The challenger must provide a proof that the number is composite.
-     * The challenger must provide a proof that the number is composite.
+     * @notice Allows caller to solve a challenge by providing a proof that _n is a composite number.
+     * @dev The challenger must provide a proof that _n is composite.
      * @param _n The composite number to be challenged.
      * @param _pA The proof A array.
      * @param _pB The proof B array.
@@ -180,18 +196,12 @@ contract CompositeNumberGame {
         uint256[2] calldata _pubSignals
     ) external {
         Challenge memory challenge = challenges[_n];
-        require(
-            challenge.challenger != address(0),
-            ChallengeDoesNotExist(_n)
-        );
+        require(challenge.challenger != address(0), ChallengeDoesNotExist(_n));
         require(
             block.number <= challenge.blockNumber + T,
             ChallengeExpired(_n)
         );
-        require(
-            challenge.solver == address(0),
-            ChallengeAlreadySolved(_n)
-        );
+        require(challenge.solver == address(0), ChallengeAlreadySolved(_n));
 
         // Check that the submitted proof is for _n. The input signal _n is in the second element
         require(_n == _pubSignals[1], ProofNotForN(_n));
@@ -209,12 +219,42 @@ contract CompositeNumberGame {
         prizePools[challenge.rewardToken] += halfReward;
         balances[msg.sender][challenge.rewardToken] += halfReward;
 
+        challenges[_n].solver = msg.sender;
+
         emit ChallengeSolved(
             _n,
             msg.sender,
             challenge.rewardToken,
             halfReward,
             halfReward
+        );
+    }
+
+    function claimExpiredChallenge(uint256 _n) external onlyChallenger(_n) {
+        Challenge memory challenge = challenges[_n];
+        require(challenge.challenger != address(0), ChallengeDoesNotExist(_n));
+        require(
+            block.number > challenge.blockNumber + T,
+            ChallengeNotExpired(_n)
+        );
+        require(challenge.solver == address(0), ChallengeAlreadySolved(_n));
+
+        uint256 rewardAmount = challenge.rewardAmount;
+        uint256 prizePoolReward = prizePools[challenge.rewardToken] / 2;
+
+        prizePools[challenge.rewardToken] -= prizePoolReward;
+        balances[challenge.challenger][challenge.rewardToken] +=
+            rewardAmount +
+            prizePoolReward;
+
+        delete challenges[_n];
+
+        emit ExpiredChallengeClaimed(
+            _n,
+            challenge.challenger,
+            challenge.rewardToken,
+            rewardAmount,
+            prizePoolReward
         );
     }
 

@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { loadFixture, mine } = require("@nomicfoundation/hardhat-network-helpers");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const snarkjs = require('snarkjs');
@@ -337,7 +337,6 @@ describe("CompositeNumberGame", function () {
                 // Create the challenge
                 await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
 
-
                 // Solve the challenge
                 const tx = await contracts.game.connect(signers.solver).solveChallenge(n, pA, pB, pC, pubSignals);
 
@@ -347,6 +346,10 @@ describe("CompositeNumberGame", function () {
 
                 const prizePool = await contracts.game.prizePools(await contracts.token.getAddress());
                 expect(prizePool).to.equal(rewardAmount / 2n);
+
+                // Check state
+                const challenge = await contracts.game.challenges(n);
+                expect(challenge.solver).to.equal(signers.solver.address);
 
                 // Check for events
                 await expect(tx)
@@ -636,11 +639,154 @@ describe("CompositeNumberGame", function () {
                     contracts.game.connect(solver).withdraw(rewardAmount, await contracts.token.getAddress())
                 ).to.be.revertedWithCustomError(contracts.game, "InsufficientBalance").withArgs(rewardAmount, balanceBefore);
 
-
             });
         });
 
+        context("claimExpiredChallenge", function () {
+            context("Happy Path Test Cases", function () {
+                it("should allow a user to claim the reward for an expired challenge", async function () {
+                    const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
 
+                    // Create a challenge
+                    const n = 33;
+                    const factor1 = 3;
+                    const factor2 = 11;
+                    const rewardAmount = ethers.parseEther("100");
+                    await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                    // Generate witness, proof, and verify
+                    await generateWitness({ n, factor1, factor2 });
+                    await generateProof();
+
+                    // Checking that proof is mathematically valid in JS as a sanity check
+                    const isValid = await verifyProof(n);
+                    expect(isValid).to.be.true;
+
+                    // Get calldata
+                    const calldata = await getCalldata();
+
+                    // Destructure calldata correctly
+                    const [pA, pB, pC, pubSignals] = calldata;
+
+
+                    // create the challenge
+                    const tx = await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+                    // Get Reward token address
+                    const challenge = await contracts.game.challenges(n);
+
+                    // Advance the blockchain by more than T blocks
+                    const t = await contracts.game.T();
+                    await mine(t + 1n);
+
+                    // Get balances before claiming the reward
+                    const challengerBalanceBefore = await contracts.game.balances(signers.challenger.address, challenge.rewardToken);
+                    const prizePoolBalanceBefore = await contracts.game.prizePools(challenge.rewardToken);
+
+                    // Challenger claims the expired challenge
+                    await contracts.game.connect(signers.challenger).claimExpiredChallenge(n);
+
+                    // Check the final balances after claiming the reward
+                    const challengerBalanceAfter = await contracts.game.balances(signers.challenger.address, challenge.rewardToken);
+                    const prizePoolBalanceAfter = await contracts.game.prizePools(challenge.rewardToken);
+
+                    // Challenger should receive 100% of the reward and 50% of the prize pool
+                    const expectedChallengerBalance = challengerBalanceBefore + rewardAmount + (prizePoolBalanceBefore / 2n);
+                    const expectedPrizePoolBalance = prizePoolBalanceBefore - (prizePoolBalanceBefore / 2n);
+
+                    expect(challengerBalanceAfter).to.equal(expectedChallengerBalance);
+                    expect(prizePoolBalanceAfter).to.equal(expectedPrizePoolBalance);
+                });
+            }); // End of Happy Path Test Cases
+
+            context("Error Test Cases", function () {
+                it("should revert if the challenge is not expired", async function () {
+                    const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                    // Create a challenge
+                    const n = 33;
+                    const factor1 = 3;
+                    const factor2 = 11;
+                    const rewardAmount = ethers.parseEther("100");
+                    await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                    // Generate witness, proof, and verify
+                    await generateWitness({ n, factor1, factor2 });
+                    await generateProof();
+
+                    // Checking that proof is mathematically valid in JS as a sanity check
+                    const isValid = await verifyProof(n);
+                    expect(isValid).to.be.true;
+
+                    // Get calldata
+                    const calldata = await getCalldata();
+
+                    // Destructure calldata correctly
+                    const [pA, pB, pC, pubSignals] = calldata;
+
+
+                    // create the challenge
+                    const tx = await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+                    // Get Reward token address
+                    const challenge = await contracts.game.challenges(n);
+
+                    // Get balances before claiming the reward
+                    const challengerBalanceBefore = await contracts.game.balances(signers.challenger.address, challenge.rewardToken);
+                    const prizePoolBalanceBefore = await contracts.game.prizePools(challenge.rewardToken);
+
+                    // Challenger claims the expired challenge
+                    await expect(
+                        contracts.game.connect(signers.challenger).claimExpiredChallenge(n)
+                    ).to.be.revertedWithCustomError(contracts.game, "ChallengeNotExpired").withArgs(n);
+                });
+
+                it("should revert if caller is not the challenger", async function () {
+                    const { contracts, signers } = await loadFixture(setupTestWithCircomFixture);
+
+                    // Create a challenge
+                    const n = 33;
+                    const factor1 = 3;
+                    const factor2 = 11;
+                    const rewardAmount = ethers.parseEther("100");
+                    await contracts.token.connect(signers.challenger).approve(await contracts.game.getAddress(), rewardAmount);
+
+                    // Generate witness, proof, and verify
+                    await generateWitness({ n, factor1, factor2 });
+                    await generateProof();
+
+                    // Checking that proof is mathematically valid in JS as a sanity check
+                    const isValid = await verifyProof(n);
+                    expect(isValid).to.be.true;
+
+                    // Get calldata
+                    const calldata = await getCalldata();
+
+                    // Destructure calldata correctly
+                    const [pA, pB, pC, pubSignals] = calldata;
+
+
+                    // create the challenge
+                    const tx = await contracts.game.connect(signers.challenger).createChallenge(n, await contracts.token.getAddress(), rewardAmount, pA, pB, pC, pubSignals);
+
+                    // Get Reward token address
+                    const challenge = await contracts.game.challenges(n);
+
+                    // Advance the blockchain by more than T blocks
+                    const t = await contracts.game.T();
+                    await mine(t + 1n);
+
+                    // Get balances before claiming the reward
+                    const challengerBalanceBefore = await contracts.game.balances(signers.challenger.address, challenge.rewardToken);
+                    const prizePoolBalanceBefore = await contracts.game.prizePools(challenge.rewardToken);
+
+                    // Challenger claims the expired challenge
+                    await expect(
+                        contracts.game.connect(signers.solver).claimExpiredChallenge(n)
+                    ).to.be.revertedWithCustomError(contracts.game, "UnauthorizedChallenger").withArgs(signers.solver.address);
+                });
+            }); // End of Error Test Cases
+        }); // End of claimExpiredChallenge context
 
     }); // End of withdraw context
 });
