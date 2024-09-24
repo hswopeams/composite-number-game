@@ -5,10 +5,15 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVerifier} from "./IVerfier.sol";
 
+/**
+ * @title CompositeNumberGame
+ * @notice A contract that allows users to create and solve challenges for composite numbers.
+ * @author Heather Swope
+ */
 contract CompositeNumberGame {
     using SafeERC20 for IERC20;
 
-      /// @notice Struct to store challenge details
+    /// @notice Struct to store challenge details
     struct Challenge {
         uint256 n;
         uint256 rewardAmount;
@@ -95,6 +100,18 @@ contract CompositeNumberGame {
         verifier = IVerifier(_verifierAddress);
     }
 
+    /**
+     * @notice Creates a new challenge with a reward amount for a given composite number.
+     * @dev The reward amount is transferred to the contract and the challenge is created.
+     * The challenger must provide a proof that the number is composite.
+     * @param _n The composite number to be challenged.
+     * @param _rewardToken The address of the token to be used as reward.
+     * @param _rewardAmount The amount of tokens to be used as reward.
+     * @param _pA The proof A array.
+     * @param _pB The proof B array.
+     * @param _pC The proof C array.
+     * @param _pubSignals The public signals array.
+     */
     function createChallenge(
         uint256 _n,
         address _rewardToken,
@@ -141,6 +158,16 @@ contract CompositeNumberGame {
         emit ChallengeCreated(_n, msg.sender, _rewardToken, _rewardAmount);
     }
 
+    /**
+     * @notice Allows caller to solve a challenge by providing a proof that the number is composite.
+     * @dev The challenger must provide a proof that the number is composite.
+     * The challenger must provide a proof that the number is composite.
+     * @param _n The composite number to be challenged.
+     * @param _pA The proof A array.
+     * @param _pB The proof B array.
+     * @param _pC The proof C array.
+     * @param _pubSignals The public signals array.
+     */
     function solveChallenge(
         uint256 _n,
         uint256[2] calldata _pA,
@@ -186,6 +213,11 @@ contract CompositeNumberGame {
         );
     }
 
+    /**
+     * @notice Withdraws an amount of the specified token from the caller's balance in the contract.
+     * @param _amount The amount of tokens to withdraw.
+     * @param _tokenAddress The address of the token to withdraw.
+     */
     function withdraw(uint256 _amount, address _tokenAddress) external {
         require(_amount > 0, InvalidAmount(_amount));
         require(
