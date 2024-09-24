@@ -141,7 +141,7 @@ contract CompositeNumberGame is ReentrancyGuard {
         uint256[2][2] calldata _pB,
         uint256[2] calldata _pC,
         uint256[2] calldata _pubSignals
-    ) external {
+    ) external nonReentrant {
         require(_rewardAmount > 0, InvalidRewardAmount(_rewardAmount));
         require(supportedTokens[_rewardToken], UnsupportedToken(_rewardToken));
         require(
