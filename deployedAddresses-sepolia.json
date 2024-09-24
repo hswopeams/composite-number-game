@@ -1,0 +1,8 @@
+{
+  "chainId": 11155111,
+  "Verifier": "0x7C360A513D5A9A2cD1dd182C1Ba229619E405e8E",
+  "CompositeNumberGame": "0xFC3e09a6704acAFcd5c174ED3c6A21942A28065A",
+  "SupportedTokens": [
+    "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+  ]
+}
