@@ -20,7 +20,15 @@ describe("CompositeNumberGame", function () {
         // Get signers
         [owner, challenger, solver] =
             await ethers.getSigners();
-        const contracts = await deployContracts();
+
+        const { tokenAddresses, verifier, game } = await deployContracts();
+
+        // Assign the first token address to contracts.token
+        const tokenAddress = tokenAddresses[0];
+        const Token = await ethers.getContractFactory("MockERC20");
+        const token = Token.attach(tokenAddress);
+
+        const contracts = { token, verifier, game };
         compileCircuite();
 
         return { contracts, signers: { owner, challenger, solver } };
@@ -28,9 +36,15 @@ describe("CompositeNumberGame", function () {
 
     async function setupTestFixture() {
         // Get signers
-        [owner, challenger, solver] =
-            await ethers.getSigners();
-        const contracts = await deployContracts();
+        const [owner, challenger, solver] = await ethers.getSigners();
+        const { tokenAddresses, verifier, game } = await deployContracts();
+
+        // Assign the first token address to contracts.token
+        const tokenAddress = tokenAddresses[0];
+        const Token = await ethers.getContractFactory("MockERC20");
+        const token = Token.attach(tokenAddress);
+
+        const contracts = { token, verifier, game };
 
         return { contracts, signers: { owner, challenger, solver } };
     }
@@ -104,6 +118,7 @@ describe("CompositeNumberGame", function () {
         context("Happy Path Test Cases", function () {
             it("should initialize the contract correctly", async function () {
                 const { contracts, signers } = await setupTestFixture();
+                console.log("token contract", contracts.token);
 
                 // Check that the verifier address is set correctly
                 expect(await contracts.game.verifier()).to.equal(await contracts.verifier.getAddress());

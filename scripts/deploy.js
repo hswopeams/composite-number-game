@@ -39,6 +39,7 @@ async function verifyContract(address, constructorArguments) {
         await run("verify:verify", {
             address: address,
             constructorArguments: constructorArguments,
+            force: true
         });
         console.log(`Contract at ${address} verified successfully.`);
     } catch (error) {
