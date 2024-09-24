@@ -2,10 +2,11 @@ const { ethers, network } = require("hardhat");
 require("dotenv").config();
 
 async function deployContracts() {
-    console.log("Deploying contracts to network:", network.name);
+    console.log(`Deploying contracts to network: ${network.name}`);
 
     let transactionResponse;
     const confirmations = process.env.CONFIRMATIONS || 1;
+    console.log(`Deployments will wait for ${confirmations} confirmations`);
 
     // Deploy the Verifier contract
     const Verifier = await ethers.getContractFactory("Groth16Verifier");
