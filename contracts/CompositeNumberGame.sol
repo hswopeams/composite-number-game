@@ -5,18 +5,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVerifier} from "./IVerfier.sol";
 
-import "hardhat/console.sol";
-
 contract CompositeNumberGame {
     using SafeERC20 for IERC20;
 
-    /// @notice Timeframe in blocks
-    uint256 public constant T = 10;
-
-    /// @notice Verifier contract interface
-    IVerifier public verifier;
-
-    /// @notice Struct to store challenge details
+      /// @notice Struct to store challenge details
     struct Challenge {
         uint256 n;
         uint256 rewardAmount;
@@ -25,6 +17,12 @@ contract CompositeNumberGame {
         address rewardToken;
         address solver;
     }
+
+    /// @notice Timeframe in blocks
+    uint256 public constant T = 10;
+
+    /// @notice Verifier contract interface
+    IVerifier public verifier;
 
     /// @notice Mapping to store supported tokens by token address
     mapping(address => bool) public supportedTokens;
@@ -101,10 +99,10 @@ contract CompositeNumberGame {
         uint256 _n,
         address _rewardToken,
         uint256 _rewardAmount,
-        uint[2] calldata _pA,
-        uint[2][2] calldata _pB,
-        uint[2] calldata _pC,
-        uint[2] calldata _pubSignals
+        uint256[2] calldata _pA,
+        uint256[2][2] calldata _pB,
+        uint256[2] calldata _pC,
+        uint256[2] calldata _pubSignals
     ) external {
         require(_rewardAmount > 0, InvalidRewardAmount(_rewardAmount));
         require(supportedTokens[_rewardToken], UnsupportedToken(_rewardToken));
@@ -145,10 +143,10 @@ contract CompositeNumberGame {
 
     function solveChallenge(
         uint256 _n,
-        uint[2] calldata _pA,
-        uint[2][2] calldata _pB,
-        uint[2] calldata _pC,
-        uint[2] calldata _pubSignals
+        uint256[2] calldata _pA,
+        uint256[2][2] calldata _pB,
+        uint256[2] calldata _pC,
+        uint256[2] calldata _pubSignals
     ) external {
         Challenge storage challenge = challenges[_n];
         require(
