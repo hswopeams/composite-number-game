@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IVerifier} from "./IVerfier.sol";
 
 /**
@@ -10,7 +11,7 @@ import {IVerifier} from "./IVerfier.sol";
  * @notice A contract that allows users to create and solve challenges for composite numbers.
  * @author Heather Swope
  */
-contract CompositeNumberGame {
+contract CompositeNumberGame is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /// @notice Struct to store challenge details
@@ -263,7 +264,7 @@ contract CompositeNumberGame {
      * @param _amount The amount of tokens to withdraw.
      * @param _tokenAddress The address of the token to withdraw.
      */
-    function withdraw(uint256 _amount, address _tokenAddress) external {
+    function withdraw(uint256 _amount, address _tokenAddress) external nonReentrant {
         require(_amount > 0, InvalidAmount(_amount));
         require(
             supportedTokens[_tokenAddress],
