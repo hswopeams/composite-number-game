@@ -3,27 +3,25 @@ const { deployContracts } = require("../utils/deployContracts");
 const fs = require("fs");
 
 async function main() {
-    const { token, verifier, game } = await deployContracts();
+    const { tokenAddresses, verifier, game } = await deployContracts();
 
     const verifierAddress = await verifier.getAddress();
-    const tokenAddress = await token.getAddress();
     const gameAddress = await game.getAddress();
 
-     // Retrieve the chainId
-     const chainId = network.config.chainId;
+    // Retrieve the chainId
+    const chainId = network.config.chainId;
 
+    console.log("Chain ID:", chainId);
     console.log("Verifier deployed to:", verifierAddress);
-    console.log("Token deployed to:", tokenAddress);
     console.log("CompositeNumberGame deployed to:", gameAddress);
-    console.log("Chain ID:", network.config.chainId);
-
-
+    console.log("Tokens Supported:", tokenAddresses);
+  
     // Write addresses and chainId to a file
     const addresses = {
         chainId: chainId,
         Verifier: verifierAddress,
-        Token: tokenAddress,
-        CompositeNumberGame: gameAddress
+        CompositeNumberGame: gameAddress,
+        SupportedTokens: tokenAddresses,
     };
 
     fs.writeFileSync("deployedAddresses.json", JSON.stringify(addresses, null, 2));
@@ -31,8 +29,7 @@ async function main() {
     // Verify contracts if not on local network
     if (network.name !== "hardhat") {
         await verifyContract(verifierAddress, []);
-        await verifyContract(tokenAddress, ["Test Token", "TTK", 18, ethers.utils.parseUnits("10000", 18)]);
-        await verifyContract(gameAddress, [[tokenAddress], verifierAddress]);
+        await verifyContract(gameAddress, [tokenAddresses, verifierAddress]);
     }
 }
 

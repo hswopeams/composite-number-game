@@ -1,10 +1,11 @@
 {
   "name": "composite-number-game",
   "scripts": {
-    "build": "npx hardhat compile",
-    "test": "npx hardhat test",
-    "deploy": "npx hardhat run scripts/deploy.js",
-    "coverage": "npx hardhat coverage",
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:hardhat": "hardhat run scripts/deploy.js",
+    "deploy:sepolia": "hardhat clean && hardhat compile && hardhat run scripts/deploy.js --network sepolia --verify",
+    "coverage": "hardhat coverage",
     "solhint": "solhint contracts/*.sol"
   },
   "devDependencies": {
