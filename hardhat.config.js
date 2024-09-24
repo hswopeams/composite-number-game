@@ -1,5 +1,6 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("@nomicfoundation/hardhat-chai-matchers");
+require("dotenv").config();
 
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -12,4 +13,7 @@ module.exports = {
       viaIR: true,
     },
   },
+  etherscan: {
+    apiKey:`${process.env.ETHERSCAN_API_KEY}`
+  }
 };

@@ -4,6 +4,7 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const snarkjs = require('snarkjs');
+const { deployContracts } = require("../utils/deployContracts");
 
 describe("CompositeNumberGame", function () {
     this.timeout(300000); // Increase timeout
@@ -32,27 +33,6 @@ describe("CompositeNumberGame", function () {
         const contracts = await deployContracts();
 
         return { contracts, signers: { owner, challenger, solver } };
-    }
-
-    async function deployContracts() {
-        // Deploy the Verifier contract
-        const Verifier = await ethers.getContractFactory("Groth16Verifier");
-        verifier = await Verifier.deploy();
-
-        // Deploy the ERC20 token contract
-        const initialSupply = ethers.parseUnits("10000", 18); //10,000 tokens
-        const Token = await ethers.getContractFactory("MockERC20");
-        token = await Token.deploy("Test Token", "TTK", 18, initialSupply);
-
-        // Deploy the CompositeNumberGame contract
-        const tokenAddress = await token.getAddress();
-        const CompositeNumberGame = await ethers.getContractFactory("CompositeNumberGame");
-        game = await CompositeNumberGame.deploy([tokenAddress], await verifier.getAddress());
-
-        // Transfer some tokens to the challenger so they can create challenges
-        await token.connect(owner).transfer(await challenger.getAddress(), ethers.parseEther("1000"));
-
-        return { token, verifier, game };
     }
 
     function compileCircuite() {
