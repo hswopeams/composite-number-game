@@ -86,6 +86,13 @@ contract CompositeNumberGame {
      * @param _tokenAddresses An array of token addresses to be marked as supported.
      */
     constructor(address[] memory _tokenAddresses, address _verifierAddress) {
+         require(
+            _verifierAddress != address(0),
+            InvalidAddress(_verifierAddress)
+        );
+
+        verifier = IVerifier(_verifierAddress);
+
         for (uint256 i = 0; i < _tokenAddresses.length; i++) {
             require(
                 _tokenAddresses[i] != address(0),
@@ -93,11 +100,7 @@ contract CompositeNumberGame {
             );
             supportedTokens[_tokenAddresses[i]] = true;
         }
-        require(
-            _verifierAddress != address(0),
-            InvalidAddress(_verifierAddress)
-        );
-        verifier = IVerifier(_verifierAddress);
+       
     }
 
     /**
@@ -128,14 +131,15 @@ contract CompositeNumberGame {
             ChallengeAlreadyExists(_n)
         );
 
-        // Check that this proof is for _n
+        // Check that the submitted proof is for _n. The input signal _n is in the second element
         require(_n == _pubSignals[1], ProofNotForN(_n));
 
         // Verify the proof using the Verifier contract. Verifies the mathematical validity of the proof but doesn't check public inputs
         bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
         require(isValidProof, InvalidProof());
 
-        // Check that the proof determined that n is composite based on the factors (private inputs) provided by the challenger
+        // Check that the proof determined that _n is composite based on the factors (private inputs signals) provided by the challenger
+        // The output signal isComposite is in the first element
         require(_pubSignals[0] == 1, NotComposite(_pubSignals[0]));
 
         // Transfer the reward amount to the contract
@@ -175,9 +179,9 @@ contract CompositeNumberGame {
         uint256[2] calldata _pC,
         uint256[2] calldata _pubSignals
     ) external {
-        Challenge storage challenge = challenges[_n];
+        Challenge memory challenge = challenges[_n];
         require(
-            challenges[_n].challenger != address(0),
+            challenge.challenger != address(0),
             ChallengeDoesNotExist(_n)
         );
         require(
@@ -185,18 +189,19 @@ contract CompositeNumberGame {
             ChallengeExpired(_n)
         );
         require(
-            challenges[_n].solver == address(0),
+            challenge.solver == address(0),
             ChallengeAlreadySolved(_n)
         );
 
-        // Check that the proof is for the correct challenge
+        // Check that the submitted proof is for _n. The input signal _n is in the second element
         require(_n == _pubSignals[1], ProofNotForN(_n));
 
         // Verify the proof using the Verifier contract. Verifies the mathematical validity of the proof but doesn't check public inputs
         bool isValidProof = verifier.verifyProof(_pA, _pB, _pC, _pubSignals);
         require(isValidProof, InvalidProof());
 
-        // Check that the proof determined that n is composite based on the factors (private inputs) provided by the solver
+        // Check that the proof determined that _n is composite based on the factors (private inputs) provided by the solver
+        // The output signal isComposite is in the first element
         require(_pubSignals[0] == 1, NotComposite(_pubSignals[0]));
 
         uint256 halfReward = challenge.rewardAmount / 2;
