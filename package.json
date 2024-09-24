@@ -6,7 +6,8 @@
     "deploy:hardhat": "hardhat run scripts/deploy.js",
     "deploy:sepolia": "hardhat clean && hardhat compile && hardhat run scripts/deploy.js --network sepolia",
     "coverage": "hardhat coverage",
-    "solhint": "solhint contracts/*.sol"
+    "solhint": "solhint contracts/*.sol",
+    "report-gas": "REPORT_GAS=true npx hardhat test"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
