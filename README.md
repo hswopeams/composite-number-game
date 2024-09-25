@@ -40,7 +40,7 @@ After cloning the composite-number-game rep from GitHub, run
 npm install
 
 ```
-Circom is required for testing the composite-number-game repo. It has been configured as a submodule. To clone initialize the circom submodule, run
+Circom is required for testing the composite-number-game repo. It has been configured as a submodule. To clone and initialize the circom submodule, run
 
 ```
 git submodule update --init --recursive
